@@ -61,6 +61,11 @@ def initialize_routes(app):
                 "id": "difference",
                 "title": "Difference Process",
                 "description": "Finds the difference between two geometries."
+            },
+            {
+                "id": "near",
+                "title": "Near Process",
+                "description": "Finds the distance to the nearest feature in a collection."
             }
         ])
 
@@ -82,6 +87,12 @@ def initialize_routes(app):
         job_id = create_job("difference", input_data)
         return jsonify({"job_id": job_id, "status": "running"})
 
+    @app.route("/processes/near/jobs", methods=["POST"])
+    def create_near_job():
+        input_data = request.json
+        job_id = create_job("near", input_data)
+        return jsonify({"job_id": job_id, "status": "running"})
+
     @app.route("/jobs/<job_id>", methods=["GET"])
     def get_job(job_id):
         job = get_job_status(job_id)
@@ -97,3 +108,21 @@ def initialize_routes(app):
         if style_id != "example_style":
             return jsonify({"error": "Style not found"}), 404
         return jsonify({"style": "Returned style"})
+    '''
+    
+    # Filtering Features Based on Properties
+    @app.route("/collections/<collection_id>/features/filter", methods=["POST"])
+    def filter_features(collection_id):
+        if collection_id != "example_collection":
+            return jsonify({"error": "Collection not found"}), 404
+
+        filter_expression = request.json.get("filter")
+        if not filter_expression:
+            return jsonify({"error": "Filter expression is required"}), 400
+
+        filtered_features = []
+        for feature in collection.features["features"]:
+            if evaluate_filter(feature["properties"], filter_expression):
+                filtered_features.append(feature)
+
+        return jsonify({"type": "FeatureCollection", "features": filtered_features})'''

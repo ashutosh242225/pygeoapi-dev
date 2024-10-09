@@ -1,4 +1,5 @@
 from shapely.geometry import Polygon, LineString, Point, GeometryCollection, shape, mapping
+from shapely.ops import nearest_points
 
 class BufferProcess:
     def execute(self, feature, distance):
@@ -36,4 +37,29 @@ class DifferenceProcess:
             "type": "Feature",
             "geometry": mapping(difference_geom),
             "properties": feature1.get('properties', {})
+        }
+
+class NearProcess:
+    def execute(self, feature, collection):
+        geom = shape(feature['geometry'])
+        if not isinstance(geom, (Polygon, LineString, Point, GeometryCollection)):
+            raise ValueError("Input geometry must be a Polygon, LineString, Point, or GeometryCollection")
+        
+        min_distance = float('inf')
+        nearest_feature = None
+        
+        for item in collection:
+            item_geom = shape(item['geometry'])
+            distance = geom.distance(item_geom)
+            if distance < min_distance:
+                min_distance = distance
+                nearest_feature = item
+        
+        return {
+            "type": "Feature",
+            "geometry": mapping(geom),
+            "properties": {
+                "nearest_distance": min_distance,
+                "nearest_feature": nearest_feature
+            }
         }

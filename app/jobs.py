@@ -2,7 +2,7 @@ import threading
 import uuid
 import logging
 from shapely.geometry import shape, mapping
-from app.models.process import BufferProcess, IntersectionProcess, DifferenceProcess
+from app.models.process import BufferProcess, IntersectionProcess, DifferenceProcess, NearProcess
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -35,6 +35,11 @@ def run_job(job_id, process_id, input_data):
             feature1 = input_data['feature1']
             feature2 = input_data['feature2']
             result_feature = process.execute(feature1, feature2)
+        elif process_id == "near":
+            process = NearProcess()
+            feature = input_data['feature']
+            collection = input_data['collection']
+            result_feature = process.execute(feature, collection)
         else:
             raise ValueError(f"Invalid process_id {process_id}")
 
