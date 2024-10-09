@@ -1,0 +1,25 @@
+ {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "name": "Sample MultiPolygon Feature",
+          "description": "This is a sample feature with a MultiPolygon geometry."
+        },
+        "geometry": {
+          "type": "MultiPolygon",
+          "coordinates": [
+            [
+              [[-102.0, 41.0], [-101.0, 41.0], [-101.0, 42.0], [-102.0, 42.0], [-102.0, 41.0]],
+              [[-103.0, 40.0], [-102.0, 40.0], [-102.0, 41.0], [-103.0, 41.0], [-103.0, 40.0]]
+            ],
+            [
+              [[-104.0, 39.0], [-103.0, 39.0], [-103.0, 40.0], [-104.0, 40.0], [-104.0, 39.0]]
+            ]
+          ]
+        }
+      }
+    ]
+  }
+  
