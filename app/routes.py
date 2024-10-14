@@ -1,7 +1,11 @@
-from flask import jsonify, request
+# routes.py
+from flask import Flask, jsonify, request
 from .models.collections import Collection
 from app.jobs import create_job, get_job_status
+from data_combiner import combine_data
 import os
+
+app = Flask(__name__)
 
 # Load the collection data
 collection_path = os.path.join(os.path.dirname(__file__), 'data', 'example_collection.geojson')
@@ -65,7 +69,7 @@ def initialize_routes(app):
             {
                 "id": "near",
                 "title": "Near Process",
-                "description": "Finds the distance to the nearest feature in a collection."
+                "description": "Finds the nearest feature in a collection to the input feature."
             }
         ])
 
@@ -78,12 +82,16 @@ def initialize_routes(app):
     @app.route("/processes/intersection/jobs", methods=["POST"])
     def create_intersection_job():
         input_data = request.json
+        if 'feature1' not in input_data or 'feature2' not in input_data:
+            return jsonify({"error": "Both 'feature1' and 'feature2' are required"}), 400
         job_id = create_job("intersection", input_data)
         return jsonify({"job_id": job_id, "status": "running"})
 
     @app.route("/processes/difference/jobs", methods=["POST"])
     def create_difference_job():
         input_data = request.json
+        if 'feature1' not in input_data or 'feature2' not in input_data:
+            return jsonify({"error": "Both 'feature1' and 'feature2' are required"}), 400
         job_id = create_job("difference", input_data)
         return jsonify({"job_id": job_id, "status": "running"})
 
@@ -108,21 +116,14 @@ def initialize_routes(app):
         if style_id != "example_style":
             return jsonify({"error": "Style not found"}), 404
         return jsonify({"style": "Returned style"})
-    '''
-    
-    # Filtering Features Based on Properties
-    @app.route("/collections/<collection_id>/features/filter", methods=["POST"])
-    def filter_features(collection_id):
-        if collection_id != "example_collection":
-            return jsonify({"error": "Collection not found"}), 404
 
-        filter_expression = request.json.get("filter")
-        if not filter_expression:
-            return jsonify({"error": "Filter expression is required"}), 400
+    # Route to serve combined data from SQL Server and GeoJSON
+    @app.route("/collections/combined", methods=["GET"])
+    def get_combined_collections():
+        geojson_file_path = os.path.join(os.path.dirname(__file__), 'data', 'example_collection.geojson')
+        combined_data = combine_data(geojson_file_path)
+        return jsonify(combined_data)
 
-        filtered_features = []
-        for feature in collection.features["features"]:
-            if evaluate_filter(feature["properties"], filter_expression):
-                filtered_features.append(feature)
-
-        return jsonify({"type": "FeatureCollection", "features": filtered_features})'''
+if __name__ == "__main__":
+    initialize_routes(app)
+    app.run(debug=True)

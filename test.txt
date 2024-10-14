@@ -1,32 +1,70 @@
+intersection
 
-curl -X POST http://localhost:5000/processes/intersection/jobs -H "Content-Type: application/json" -d '{
-    "geometry1": {
-        "type": "Polygon",
-        "coordinates": [
-            [
-                [-104.99404, 39.75621],
-                [-104.99404, 39.74621],
-                [-104.98404, 39.74621],
-                [-104.98404, 39.75621],
-                [-104.99404, 39.75621]
+{
+    "feature1": {
+        "type": "Feature",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [-104.99404, 39.75621],
+                    [-104.99404, 39.74621],
+                    [-104.98404, 39.74621],
+                    [-104.98404, 39.75621],
+                    [-104.99404, 39.75621]
+                ]
             ]
-        ]
+        },
+        "properties": {
+            "name": "Polygon 1"
+        }
     },
-    "geometry2": {
-        "type": "Polygon",
-        "coordinates": [
-            [
-                [-104.99004, 39.75221],
-                [-104.99004, 39.74221],
-                [-104.98004, 39.74221],
-                [-104.98004, 39.75221],
-                [-104.99004, 39.75221]
+    "feature2": {
+        "type": "Feature",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [-104.99004, 39.75221],
+                    [-104.99004, 39.74221],
+                    [-104.98004, 39.74221],
+                    [-104.98004, 39.75221],
+                    [-104.99004, 39.75221]
+                ]
             ]
-        ]
+        },
+        "properties": {
+            "name": "Polygon 2"
+        }
     }
-}'
+}
 
 
+buffer
+
+{
+    "feature": {
+        "type": "Feature",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [-104.99404, 39.75621],
+                    [-104.99404, 39.74621],
+                    [-104.98404, 39.74621],
+                    [-104.98404, 39.75621],
+                    [-104.99404, 39.75621]
+                ]
+            ]
+        },
+        "properties": {
+            "name": "Example Polygon"
+        }
+    },
+    "distance": 10.0
+}
+
+near
 
 curl -X POST http://localhost:5000/processes/near/jobs -H "Content-Type: application/json" -d '{
     "feature": {
@@ -62,3 +100,46 @@ curl -X POST http://localhost:5000/processes/near/jobs -H "Content-Type: applica
         }
     ]
 }'
+
+
+differnce
+
+{
+    "feature1": {
+        "type": "Feature",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [-104.99404, 39.75621],
+                    [-104.99404, 39.74621],
+                    [-104.98404, 39.74621],
+                    [-104.98404, 39.75621],
+                    [-104.99404, 39.75621]
+                ]
+            ]
+        },
+        "properties": {
+            "name": "Polygon 1"
+        }
+    },
+    "feature2": {
+        "type": "Feature",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [-104.99004, 39.75221],
+                    [-104.99004, 39.74221],
+                    [-104.98004, 39.74221],
+                    [-104.98004, 39.75221],
+                    [-104.99004, 39.75221]
+                ]
+            ]
+        },
+        "properties": {
+            "name": "Polygon 2"
+        }
+    }
+}
+
