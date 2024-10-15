@@ -1,21 +1,18 @@
 # routes.py
 from flask import Flask, jsonify, request
-from .models.collections import Collection
-from app.jobs import create_job, get_job_status
-from data_combiner import combine_data
+from config import COLLECTIONS_CONFIG
+from data_loader import load_data_from_sql, load_data_from_geojson
 import os
+from jobs import create_job, get_job_status
 
 app = Flask(__name__)
-
-# Load the collection data
-collection_path = os.path.join(os.path.dirname(__file__), 'data', 'example_collection.geojson')
-collection = Collection(collection_path)
 
 def initialize_routes(app):
     # OGC Features Routes
     @app.route("/collections", methods=["GET"])
     def get_collections():
-        return jsonify([{"id": "example_collection", "title": "Example Collection"}])
+        collections = [{"id": collection["id"], "title": collection["id"]} for collection in COLLECTIONS_CONFIG["collections"]]
+        return jsonify(collections)
     
     @app.route("/conformance", methods=["GET"])
     def get_conformance():
@@ -28,24 +25,25 @@ def initialize_routes(app):
 
     @app.route("/collections/<collection_id>", methods=["GET"])
     def get_collection(collection_id):
-        if collection_id != "example_collection":
+        collection = next((c for c in COLLECTIONS_CONFIG["collections"] if c["id"] == collection_id), None)
+        if not collection:
             return jsonify({"error": "Collection not found"}), 404
-        return jsonify({"id": collection_id, "title": "Example Collection", "description": "Sample MultiPolygon feature."})
+        return jsonify({"id": collection_id, "title": collection_id, "description": f"Collection from {collection['type']} source."})
 
     @app.route("/collections/<collection_id>/features", methods=["GET"])
     def get_features(collection_id):
-        if collection_id != "example_collection":
+        collection = next((c for c in COLLECTIONS_CONFIG["collections"] if c["id"] == collection_id), None)
+        if not collection:
             return jsonify({"error": "Collection not found"}), 404
-        return jsonify(collection.features)
-
-    @app.route("/collections/<collection_id>/features/<feature_id>", methods=["GET"])
-    def get_feature(collection_id, feature_id):
-        if collection_id != "example_collection":
-            return jsonify({"error": "Collection not found"}), 404
-        feature = collection.get_feature(feature_id)
-        if not feature:
-            return jsonify({"error": "Feature not found"}), 404
-        return jsonify(feature)
+        
+        if collection["type"] == "sql":
+            data = load_data_from_sql(collection["connection_string"], collection["table"])
+        elif collection["type"] == "geojson":
+            data = load_data_from_geojson(collection["file_path"])
+        else:
+            return jsonify({"error": "Unsupported collection type"}), 400
+        
+        return jsonify(data)
 
     # OGC Processes Routes
     @app.route("/processes", methods=["GET"])
@@ -116,13 +114,6 @@ def initialize_routes(app):
         if style_id != "example_style":
             return jsonify({"error": "Style not found"}), 404
         return jsonify({"style": "Returned style"})
-
-    # Route to serve combined data from SQL Server and GeoJSON
-    @app.route("/collections/combined", methods=["GET"])
-    def get_combined_collections():
-        geojson_file_path = os.path.join(os.path.dirname(__file__), 'data', 'example_collection.geojson')
-        combined_data = combine_data(geojson_file_path)
-        return jsonify(combined_data)
 
 if __name__ == "__main__":
     initialize_routes(app)
