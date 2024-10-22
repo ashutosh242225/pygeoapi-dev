@@ -1,9 +1,13 @@
 # routes.py
-from flask import Flask, jsonify, request
+
+from flask import Flask, jsonify, request, Response
 from config import COLLECTIONS_CONFIG
-from data_loader import load_data_from_sql, load_data_from_geojson
+from data_loader import load_data_from_sql, load_data_from_geojson,simplify_geojson
 import os
 from jobs import create_job, get_job_status
+import gzip
+import json
+from shapely.geometry import shape, Point, Polygon, box
 
 app = Flask(__name__)
 
@@ -30,21 +34,152 @@ def initialize_routes(app):
             return jsonify({"error": "Collection not found"}), 404
         return jsonify({"id": collection_id, "title": collection_id, "description": f"Collection from {collection['type']} source."})
 
-    @app.route("/collections/<collection_id>/features", methods=["GET"])
+   
+    @app.route("/collections/<collection_id>/items", methods=["GET"])
     def get_features(collection_id):
         collection = next((c for c in COLLECTIONS_CONFIG["collections"] if c["id"] == collection_id), None)
         if not collection:
             return jsonify({"error": "Collection not found"}), 404
-        
-        if collection["type"] == "sql":
-            data = load_data_from_sql(collection["connection_string"], collection["table"])
-        elif collection["type"] == "geojson":
-            data = load_data_from_geojson(collection["file_path"])
+        # Add logic to load data from the appropriate source
+        if collection["type"] == "geojson":
+            features = load_data_from_geojson(collection["file_path"])
+        elif collection["type"] == "sql":
+            features = load_data_from_sql(collection["connection_string"], collection["table"])
+        else:
+            return jsonify({"error": "Unsupported collection type"}), 400
+        simplified_features = simplify_geojson(features)
+        compressed_data = gzip.compress(json.dumps(simplified_features).encode('utf-8'))
+        return Response(compressed_data, content_type='application/json', headers={'Content-Encoding': 'gzip'})
+
+    @app.route("/collections/<collection_id>/items/<feature_id>", methods=["GET"])
+    def get_feature_by_id(collection_id, feature_id):
+        collection = next((c for c in COLLECTIONS_CONFIG["collections"] if c["id"] == collection_id), None)
+        if not collection:
+            return jsonify({"error": "Collection not found"}), 404
+        # Add logic to load data from the appropriate source
+        if collection["type"] == "geojson":
+            features = load_data_from_geojson(collection["file_path"])
+        elif collection["type"] == "sql":
+            features = load_data_from_sql(collection["connection_string"], collection["table"])
         else:
             return jsonify({"error": "Unsupported collection type"}), 400
         
-        return jsonify(data)
+        feature = next((f for f in features["features"] if f["properties"]["id"] == int(feature_id)), None)
+        if not feature:
+            return jsonify({"error": "Feature not found"}), 404
+        return jsonify(feature)
+    
+    @app.route("/collections/<collection_id>/items/administrative", methods=["GET"])
+    def get_administrative_boundaries(collection_id):
+        zoom = int(request.args.get('zoom'))
+        bbox = request.args.get('bbox')
 
+        if not zoom:
+            return jsonify({"error": "Zoom parameter is required"}), 400
+
+        bbox_polygon = None
+        if bbox:
+            bbox = [float(coord) for coord in bbox.split(',')]
+            bbox_polygon = box(bbox[0], bbox[1], bbox[2], bbox[3])
+
+        collection = next((c for c in COLLECTIONS_CONFIG["collections"] if c["id"] == collection_id), None)
+        if not collection:
+            return jsonify({"error": "Collection not found"}), 404
+
+        if collection["type"] == "geojson":
+            features = load_data_from_geojson(collection["file_path"])
+        elif collection["type"] == "sql":
+            features = load_data_from_sql(collection["connection_string"], collection["table"])
+        else:
+            return jsonify({"error": "Unsupported collection type"}), 400
+
+        # Filter features based on zoom level
+        if zoom <= 5:
+            level = "L1"
+        elif 6 <= zoom <= 10:
+            level = "L2"
+        else:
+            level = "L3"
+
+        filtered_features = [f for f in features["features"] if f["properties"].get("level") == level]
+        if bbox_polygon:
+            filtered_features = [f for f in filtered_features if shape(f["geometry"]).intersects(bbox_polygon)]
+        
+        # Include feature ID in the response
+        for feature in filtered_features:
+            feature["properties"]["feature_id"] = feature["properties"]["id"]
+        
+        return jsonify({"type": "FeatureCollection", "features": filtered_features})
+
+    @app.route("/collections/<collection_id>/items/point", methods=["GET"])
+    def get_point_features(collection_id):
+        zoom = int(request.args.get('zoom'))
+        bbox = request.args.get('bbox')
+
+        if not zoom:
+            return jsonify({"error": "Zoom parameter is required"}), 400
+
+        bbox_polygon = None
+        if bbox:
+            bbox = [float(coord) for coord in bbox.split(',')]
+            bbox_polygon = box(bbox[0], bbox[1], bbox[2], bbox[3])
+
+        collection = next((c for c in COLLECTIONS_CONFIG["collections"] if c["id"] == collection_id), None)
+        if not collection:
+            return jsonify({"error": "Collection not found"}), 404
+
+        if collection["type"] == "geojson":
+            features = load_data_from_geojson(collection["file_path"])
+        elif collection["type"] == "sql":
+            features = load_data_from_sql(collection["connection_string"], collection["table"])
+        else:
+            return jsonify({"error": "Unsupported collection type"}), 400
+
+        filtered_features = [f for f in features["features"] if f["properties"].get("min_zoom", 0) <= zoom <= f["properties"].get("max_zoom", 20) and shape(f["geometry"]).geom_type == 'Point']
+        if bbox_polygon:
+            filtered_features = [f for f in filtered_features if shape(f["geometry"]).intersects(bbox_polygon)]
+        
+        # Include feature ID in the response
+        for feature in filtered_features:
+            feature["properties"]["feature_id"] = feature["properties"]["id"]
+        
+        return jsonify({"type": "FeatureCollection", "features": filtered_features})
+
+    
+    @app.route("/collections/<collection_id>/items/polygon", methods=["GET"])
+    def get_polygon_features(collection_id):
+        zoom = int(request.args.get('zoom'))
+        bbox = request.args.get('bbox')
+
+        if not zoom:
+            return jsonify({"error": "Zoom parameter is required"}), 400
+        if not bbox:
+            return jsonify({"error": "Bbox parameter is required"}), 400
+
+        bbox = [float(coord) for coord in bbox.split(',')]
+        bbox_polygon = box(bbox[0], bbox[1], bbox[2], bbox[3])
+
+        collection = next((c for c in COLLECTIONS_CONFIG["collections"] if c["id"] == collection_id), None)
+        if not collection:
+            return jsonify({"error": "Collection not found"}), 404
+
+        if collection["type"] == "geojson":
+            features = load_data_from_geojson(collection["file_path"])
+        elif collection["type"] == "sql":
+            features = load_data_from_sql(collection["connection_string"], collection["table"])
+        else:
+            return jsonify({"error": "Unsupported collection type"}), 400
+
+        filtered_features = [f for f in features["features"] if f["properties"].get("min_zoom", 0) <= zoom <= f["properties"].get("max_zoom", 20)]
+        filtered_features = [f for f in filtered_features if shape(f["geometry"]).intersects(bbox_polygon)]
+        
+        # Include feature ID in the response
+        for feature in filtered_features:
+            feature["properties"]["feature_id"] = feature["properties"]["id"]
+        
+        return jsonify({"type": "FeatureCollection", "features": filtered_features})
+
+    
     # OGC Processes Routes
     @app.route("/processes", methods=["GET"])
     def get_processes():
@@ -103,6 +238,7 @@ def initialize_routes(app):
     def get_job(job_id):
         job = get_job_status(job_id)
         return jsonify(job)
+    
     
     # OGC Styles Routes
     @app.route("/styles", methods=["GET"])
