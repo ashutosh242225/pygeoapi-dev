@@ -8,15 +8,15 @@ from jobs import create_job, get_job_status
 import gzip
 import json
 from shapely.geometry import shape, Point, Polygon, box
+from flask_geojson import GeoJSON
 
 app = Flask(__name__)
 
 def initialize_routes(app):
-    # OGC Features Routes
     @app.route("/collections", methods=["GET"])
     def get_collections():
-        collections = [{"id": collection["id"], "title": collection["id"]} for collection in COLLECTIONS_CONFIG["collections"]]
-        return jsonify(collections)
+        collections = [{"id": collection["id"], "title": collection["title"], "description": collection.get("description", "")} for collection in COLLECTIONS_CONFIG["collections"]]
+        return jsonify({"collections": collections})
     
     @app.route("/conformance", methods=["GET"])
     def get_conformance():
@@ -32,10 +32,9 @@ def initialize_routes(app):
         collection = next((c for c in COLLECTIONS_CONFIG["collections"] if c["id"] == collection_id), None)
         if not collection:
             return jsonify({"error": "Collection not found"}), 404
-        return jsonify({"id": collection_id, "title": collection_id, "description": f"Collection from {collection['type']} source."})
-
+        return jsonify({"id": collection_id, "title": collection["title"], "description": collection.get("description", "")})
    
-    @app.route("/collections/<collection_id>/items", methods=["GET"])
+    '''@app.route("/collections/<collection_id>/items", methods=["GET"])
     def get_features(collection_id):
         collection = next((c for c in COLLECTIONS_CONFIG["collections"] if c["id"] == collection_id), None)
         if not collection:
@@ -49,7 +48,53 @@ def initialize_routes(app):
             return jsonify({"error": "Unsupported collection type"}), 400
         simplified_features = simplify_geojson(features)
         compressed_data = gzip.compress(json.dumps(simplified_features).encode('utf-8'))
-        return Response(compressed_data, content_type='application/json', headers={'Content-Encoding': 'gzip'})
+        return Response(compressed_data, content_type='application/json', headers={'Content-Encoding': 'gzip'})'''
+    
+    @app.route("/collections/<collection_id>/items", methods=["GET"])
+    def get_features(collection_id):
+        zoom = int(request.args.get('zoom'))
+        bbox = request.args.get('bbox')
+
+        if not zoom:
+            return jsonify({"error": "Zoom parameter is required"}), 400
+        if not bbox:
+            return jsonify({"error": "Bbox parameter is required"}), 400
+
+        bbox = [float(coord) for coord in bbox.split(',')]
+        bbox_polygon = box(bbox[0], bbox[1], bbox[2], bbox[3])
+
+        collection = next((c for c in COLLECTIONS_CONFIG["collections"] if c["id"] == collection_id), None)
+        if not collection:
+            return jsonify({"error": "Collection not found"}), 404
+
+        if collection["type"] == "geojson":
+            features = load_data_from_geojson(collection["file_path"])
+        elif collection["type"] == "sql":
+            features = load_data_from_sql(collection["connection_string"], collection["table"])
+        else:
+            return jsonify({"error": "Unsupported collection type"}), 400
+
+        # Get zoom levels for the collection
+        zoom_levels = collection.get("zoom_levels", {})
+
+        # Determine the level based on the zoom level
+        level = None
+        for lvl, (min_zoom, max_zoom) in zoom_levels.items():
+            if min_zoom <= zoom <= max_zoom:
+                level = lvl
+                break
+
+        if not level:
+            return jsonify({"error": "No matching level for the given zoom"}), 400
+
+        filtered_features = [f for f in features["features"] if f["properties"].get("level") == level]
+        filtered_features = [f for f in filtered_features if shape(f["geometry"]).intersects(bbox_polygon)]
+        
+        # Include feature ID in the response
+        for feature in filtered_features:
+            feature["properties"]["feature_id"] = feature["properties"]["id"]
+        
+        return jsonify({"type": "FeatureCollection", "features": filtered_features})
 
     @app.route("/collections/<collection_id>/items/<feature_id>", methods=["GET"])
     def get_feature_by_id(collection_id, feature_id):
@@ -93,13 +138,18 @@ def initialize_routes(app):
         else:
             return jsonify({"error": "Unsupported collection type"}), 400
 
-        # Filter features based on zoom level
-        if zoom <= 5:
-            level = "L1"
-        elif 6 <= zoom <= 10:
-            level = "L2"
-        else:
-            level = "L3"
+        # Get zoom levels for the collection
+        zoom_levels = collection.get("zoom_levels", {})
+
+        # Determine the level based on the zoom level
+        level = None
+        for lvl, (min_zoom, max_zoom) in zoom_levels.items():
+            if min_zoom <= zoom <= max_zoom:
+                level = lvl
+                break
+
+        if not level:
+            return jsonify({"error": "No matching level for the given zoom"}), 400
 
         filtered_features = [f for f in features["features"] if f["properties"].get("level") == level]
         if bbox_polygon:

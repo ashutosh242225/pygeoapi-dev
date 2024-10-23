@@ -287,3 +287,90 @@ def initialize_routes(app):
         if style_id != "example_style":
             return jsonify({"error": "Style not found"}), 404
         return jsonify({"style": "Returned style"})
+
+
+
+
+        // components/MapComponent.js
+import React, { useEffect, useState, useRef } from 'react';
+import { MapContainer, TileLayer, GeoJSON, LayersControl } from 'react-leaflet';
+import axios from 'axios';
+import L from 'leaflet';
+
+const { BaseLayer, Overlay } = LayersControl;
+
+const MapComponent = () => {
+  const [features, setFeatures] = useState([]);
+  const [zoomLevel, setZoomLevel] = useState(13);
+  const [bbox, setBbox] = useState(null);
+  const previousBbox = useRef(null);
+  const cache = useRef({});
+
+  useEffect(() => {
+    if (bbox && !isBboxWithinPreviousBbox(bbox, previousBbox.current)) {
+      fetchFeatures(bbox, zoomLevel);
+    }
+  }, [bbox, zoomLevel]);
+
+  const fetchFeatures = (bbox, zoom) => {
+    const bboxString = bbox.join(',');
+    const cacheKey = `${zoom}-${bboxString}`;
+    if (cache.current[cacheKey]) {
+      setFeatures(cache.current[cacheKey]);
+      return;
+    }
+
+    axios.get(`/collections/example_collection/items?zoom=${zoom}&bbox=${bboxString}`)
+      .then(response => {
+        setFeatures(response.data.features);
+        cache.current[cacheKey] = response.data.features;
+        previousBbox.current = bbox;
+      })
+      .catch(error => {
+        console.error('Error fetching data:', error);
+      });
+  };
+
+  const isBboxWithinPreviousBbox = (newBbox, oldBbox) => {
+    if (!oldBbox) return false;
+    return (
+      newBbox[0] >= oldBbox[0] &&
+      newBbox[1] >= oldBbox[1] &&
+      newBbox[2] <= oldBbox[2] &&
+      newBbox[3] <= oldBbox[3]
+    );
+  };
+
+  const handleMoveEnd = (e) => {
+    const map = e.target;
+    const bounds = map.getBounds();
+    const newBbox = [
+      bounds.getWest(),
+      bounds.getSouth(),
+      bounds.getEast(),
+      bounds.getNorth()
+    ];
+    setBbox(newBbox);
+    setZoomLevel(map.getZoom());
+  };
+
+  return (
+    <MapContainer center={[39.75621, -104.99404]} zoom={zoomLevel} style={{ height: '500px', width: '100%' }} onmoveend={handleMoveEnd}>
+      <LayersControl position="topright">
+        <BaseLayer checked name="OpenStreetMap">
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          />
+        </BaseLayer>
+        {features.map((feature, index) => (
+          <Overlay key={index} name={feature.properties.name}>
+            <GeoJSON data={feature} />
+          </Overlay>
+        ))}
+      </LayersControl>
+    </MapContainer>
+  );
+};
+
+export default MapComponent;
